@@ -7,7 +7,7 @@ import { Header } from "@/components/header"
 
 export default function ChatPage() {
   const router = useRouter()
-  const [user, setUser] = useState<{ email: string; role: string; name: string } | null>(null)
+  const [user, setUser] = useState<{ email: string; role?: string; name?: string; id_tipo_usuario?: number } | null>(null)
 
   useEffect(() => {
     const userData = localStorage.getItem("user")
@@ -16,7 +16,13 @@ export default function ChatPage() {
       return
     }
     const parsedUser = JSON.parse(userData)
-    if (parsedUser.role !== "student") {
+    // Preferir comprobación por id_tipo_usuario para evitar discrepancias de cadena
+    if (parsedUser.id_tipo_usuario !== undefined) {
+      if (parsedUser.id_tipo_usuario !== 2) {
+        router.push("/admin")
+        return
+      }
+    } else if (parsedUser.role !== "student") {
       router.push("/admin")
       return
     }

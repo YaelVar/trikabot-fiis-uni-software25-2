@@ -67,8 +67,8 @@ export function LocationsManager() {
   const handleSave = () => {
     if (isAdding) {
       const newLocation: Location = {
-        id: Date.now().toString(),
         ...(formData as Location),
+        id: Date.now().toString(),
       }
       setLocations([...locations, newLocation])
       setIsAdding(false)

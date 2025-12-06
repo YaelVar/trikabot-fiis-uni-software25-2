@@ -9,6 +9,11 @@ from .ai.gemini import Gemini
 # from .auth.dependencies import get_user_identifier # Descomentar cuando agregues login
 # from .auth.throttling import apply_rate_limit # Descomentar cuando agregues limitación de tasa
 from .database import get_db, engine, Base
+from fastapi import HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from src.auth.utils import get_user_by_email, verify_password, create_access_token
+from .models import Ubicacion, Usuario
+from .models import Docente, DocenteCursoInfo
 
 
 load_dotenv()
@@ -97,6 +102,16 @@ class ChatResponse(BaseModel):
     response: str
 
 
+class RegistrationRequest(BaseModel):
+    fullName: str
+    studentCode: str
+    career: str
+    semester: str | None = None
+    phone: str | None = None
+    email: str
+    password: str
+
+
 # --- API Endpoints ---
 # RUTA CHAT (SIN LOGIN TEMPORALMENTE)
 @app.post("/chat", response_model=ChatResponse)
@@ -169,3 +184,88 @@ async def root(db: Session = Depends(get_db)):
         return {"message": "API is running", "db_status": "connected"}
     except Exception as e:
         return {"message": "API is running", "db_status": "error", "detail": str(e)}
+    
+@app.get("/api/locations")
+def get_locations(db: Session = Depends(get_db)):
+    # Consulta todas las ubicaciones en la base de datos
+    locations = db.query(Ubicacion).all()
+    return locations
+
+
+@app.post("/api/register")
+def register_user(payload: RegistrationRequest, db: Session = Depends(get_db)):
+    # Validaciones básicas
+    existing = db.query(Usuario).filter(Usuario.correo == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El correo ya está registrado")
+
+    # Intentar hashear la contraseña con bcrypt si está disponible
+    try:
+        import bcrypt
+        hashed = bcrypt.hashpw(payload.password.encode(), bcrypt.gensalt()).decode()
+    except Exception:
+        # Fallback (solo para entornos de desarrollo)
+        hashed = payload.password
+        print("WARNING: bcrypt no disponible. Almacenando contraseña en texto plano (solo dev).")
+
+    # Creamos el usuario como tipo 2 (estudiante)
+    new_user = Usuario(
+        codigo_uni=payload.studentCode,
+        nombre_completo=payload.fullName,
+        correo=payload.email,
+        contrasenia=hashed,
+        estado=True,
+        id_tipo_usuario=2,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # Generar token para uso inmediato en frontend
+    token_data = {"sub": new_user.correo, "id_usuario": new_user.id_usuario, "id_tipo_usuario": new_user.id_tipo_usuario}
+    access_token = create_access_token(token_data)
+
+    return {"access_token": access_token, "token_type": "bearer", "role": "student", "email": new_user.correo, "name": new_user.nombre_completo, "id_tipo_usuario": new_user.id_tipo_usuario}
+
+
+@app.get("/api/teachers")
+def get_teachers(db: Session = Depends(get_db)):
+    # Devuelve docentes con información agregada de cursos/metodología/consejos
+    docentes = db.query(Docente).all()
+    result = []
+    for d in docentes:
+        cursos = [info.codigo_curso for info in (d.info_cursos or []) if info.codigo_curso]
+        metodos = [info.metodologia for info in (d.info_cursos or []) if info.metodologia]
+        consejos = [info.consejos for info in (d.info_cursos or []) if info.consejos]
+        validated = any((info.estado_validacion or '').lower() == 'validado' for info in (d.info_cursos or []))
+        result.append({
+            "id": d.id_docente,
+            "name": d.nombres_completos,
+            "email": d.correo_institucional,
+            "specialty": d.especialidad or '',
+            "courses": cursos,
+            "methodology": '\n'.join(metodos) if metodos else '',
+            "tips": '\n'.join(consejos) if consejos else '',
+            "validated": validated,
+            "status": "active",
+        })
+    return result
+
+
+@app.post("/token")
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # OAuth2PasswordRequestForm usa el campo 'username' para el correo
+    email = form_data.username
+    password = form_data.password
+
+    user = get_user_by_email(db, email)
+    if not user or not verify_password(password, user.contrasenia):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+
+    # Generamos token con información mínima
+    token_data = {"sub": user.correo, "id_usuario": user.id_usuario, "id_tipo_usuario": user.id_tipo_usuario}
+    access_token = create_access_token(token_data)
+
+    # Respondemos también con metadatos para que el frontend sepa la ruta a usar
+    role = "admin" if user.id_tipo_usuario == 1 else "student"
+    return {"access_token": access_token, "token_type": "bearer", "role": role, "email": user.correo, "name": user.nombre_completo, "id_tipo_usuario": user.id_tipo_usuario}

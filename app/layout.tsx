@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
+  title: 'TRIKABOT FIIS',
+  description: 'Creado por estudiantes de la FIIS - UNI para asistir a la comunidad universitaria.',
   generator: 'v0.app',
   icons: {
     icon: '/icon.svg',

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,33 +24,12 @@ interface Teacher {
   status: "active" | "inactive"
 }
 
-const initialTeachers: Teacher[] = [
-  {
-    id: "1",
-    name: "Dr. Juan Pérez",
-    email: "jperez@uni.edu.pe",
-    specialty: "Investigación de Operaciones",
-    courses: ["Investigación de Operaciones I", "Optimización"],
-    methodology: "Clases teórico-prácticas con casos reales",
-    tips: "Revisar los ejercicios antes de clase",
-    validated: true,
-    status: "active",
-  },
-  {
-    id: "2",
-    name: "Mg. María García",
-    email: "mgarcia@uni.edu.pe",
-    specialty: "Sistemas de Información",
-    courses: ["Bases de Datos", "Sistemas de Información"],
-    methodology: "Proyectos grupales y laboratorios",
-    tips: "Practicar SQL constantemente",
-    validated: false,
-    status: "active",
-  },
-]
+const initialTeachers: Teacher[] = []
 
 export function TeachersManager() {
   const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers)
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<Teacher>>({})
@@ -72,8 +51,8 @@ export function TeachersManager() {
   const handleSave = () => {
     if (isAdding) {
       const newTeacher: Teacher = {
-        id: Date.now().toString(),
         ...(formData as Teacher),
+        id: Date.now().toString(),
       }
       setTeachers([...teachers, newTeacher])
       setIsAdding(false)
@@ -163,6 +142,36 @@ export function TeachersManager() {
     }
     reader.readAsText(file)
   }
+
+  useEffect(() => {
+    async function fetchTeachers() {
+      try {
+        const res = await fetch("http://127.0.0.1:8080/api/teachers")
+        if (!res.ok) throw new Error("No se pudo cargar la lista de docentes")
+        const data = await res.json()
+        // Mapear respuesta al formato interno
+        const mapped: Teacher[] = (data || []).map((t: any) => ({
+          id: String(t.id || Date.now() + Math.random()),
+          name: t.name || t.nombres_completos || "",
+          email: t.email || t.correo_institucional || "",
+          specialty: t.specialty || t.especialidad || "",
+          courses: t.courses || [],
+          methodology: t.methodology || t.metodologia || "",
+          tips: t.tips || t.consejos || "",
+          validated: !!t.validated,
+          status: t.status || "active",
+        }))
+        setTeachers(mapped)
+      } catch (err) {
+        console.error(err)
+        setError("No se pudieron cargar los docentes. Verifica que el backend esté corriendo.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchTeachers()
+  }, [])
 
   const confirmBulkUpload = () => {
     if (bulkPreview.length > 0) {
@@ -365,8 +374,13 @@ export function TeachersManager() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {teachers.map((teacher) => (
+      {isLoading ? (
+        <div className="py-8">Cargando docentes...</div>
+      ) : error ? (
+        <div className="py-8 text-red-600">{error}</div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {teachers.map((teacher) => (
           <Card key={teacher.id} className="border-gray-200">
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -445,8 +459,9 @@ export function TeachersManager() {
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

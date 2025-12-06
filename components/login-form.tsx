@@ -30,16 +30,39 @@ export function LoginForm() {
     e.preventDefault()
     setError("")
     setIsLoading(true)
+    try {
+      const body = new URLSearchParams()
+      body.append('username', email)
+      body.append('password', password)
 
-    // Simulated authentication
-    if (email === "estudiante@uni.pe" && password === "estudiante") {
-      localStorage.setItem("user", JSON.stringify({ email, role: "student", name: "Estudiante UNI" }))
-      router.push("/chat")
-    } else if (email === "admin@uni.pe" && password === "admin") {
-      localStorage.setItem("user", JSON.stringify({ email, role: "admin", name: "Administrador" }))
-      router.push("/admin")
-    } else {
-      setError("Credenciales incorrectas")
+      const res = await fetch('http://127.0.0.1:8080/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: body.toString()
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail || 'Credenciales incorrectas')
+        setIsLoading(false)
+        return
+      }
+
+      const data = await res.json()
+      // Guardamos información mínima en localStorage para uso del frontend
+      const user = { email: data.email, role: data.role, name: data.name, id_tipo_usuario: data.id_tipo_usuario, token: data.access_token }
+      localStorage.setItem('user', JSON.stringify(user))
+
+      // Redirigimos según el rol retornado por el backend
+      if (data.id_tipo_usuario === 1) {
+        router.push('/admin')
+      } else {
+        router.push('/chat')
+      }
+    } catch (e) {
+      setError('Error al conectar con el servidor')
       setIsLoading(false)
     }
   }
@@ -61,20 +84,38 @@ export function LoginForm() {
       return
     }
 
-    // Simulated registration - only for students
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        email,
-        role: "student",
-        name: registerData.fullName,
+    try {
+      const body = {
+        fullName: registerData.fullName,
         studentCode: registerData.studentCode,
         career: registerData.career,
         semester: registerData.semester,
         phone: registerData.phone,
-      }),
-    )
-    router.push("/chat")
+        email,
+        password,
+      }
+
+      const res = await fetch("http://127.0.0.1:8080/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail || "Error al crear la cuenta")
+        setIsLoading(false)
+        return
+      }
+
+      const data = await res.json()
+      const user = { email: data.email, role: data.role, name: data.name, id_tipo_usuario: data.id_tipo_usuario, token: data.access_token }
+      localStorage.setItem("user", JSON.stringify(user))
+      router.push("/chat")
+    } catch (err) {
+      setError("Error al conectar con el servidor")
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -193,13 +234,7 @@ export function LoginForm() {
           </button>
         </div>
 
-        {!showRegister && (
-          <div className="mt-6 p-4 bg-cyan-50 rounded-lg border border-cyan-200">
-            <p className="text-sm font-medium text-gray-700 mb-2">Credenciales de prueba:</p>
-            <p className="text-xs text-gray-600">Estudiante: estudiante@uni.pe / estudiante</p>
-            <p className="text-xs text-gray-600">Admin: admin@uni.pe / admin</p>
-          </div>
-        )}
+        {/* Credenciales de prueba eliminadas en producción */}
       </CardContent>
     </Card>
   )

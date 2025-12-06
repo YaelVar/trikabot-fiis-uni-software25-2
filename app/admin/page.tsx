@@ -7,7 +7,7 @@ import { AdminPanel } from "@/components/admin-panel"
 
 export default function AdminPage() {
   const router = useRouter()
-  const [user, setUser] = useState<{ email: string; role: string } | null>(null)
+  const [user, setUser] = useState<{ email: string; role?: string; id_tipo_usuario?: number } | null>(null)
 
   useEffect(() => {
     const userData = localStorage.getItem("user")
@@ -16,7 +16,13 @@ export default function AdminPage() {
       return
     }
     const parsedUser = JSON.parse(userData)
-    if (parsedUser.role !== "admin") {
+    // Preferir comprobación por id_tipo_usuario para evitar discrepancias de cadena
+    if (parsedUser.id_tipo_usuario !== undefined) {
+      if (parsedUser.id_tipo_usuario !== 1) {
+        router.push("/chat")
+        return
+      }
+    } else if (parsedUser.role !== "admin") {
       router.push("/chat")
       return
     }
